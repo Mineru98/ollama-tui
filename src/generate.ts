@@ -1,8 +1,10 @@
-import { ollama, MODEL } from "./config.ts";
+import { ollama, selectModel } from "./config.ts";
+import { MODEL } from "./config.ts";
 
 const PROMPT = "TypeScript의 장점을 5가지 알려줘.";
 
 async function generate() {
+  await selectModel();
   console.log(`Model: ${MODEL}`);
   console.log(`Prompt: ${PROMPT}`);
   console.log("---");

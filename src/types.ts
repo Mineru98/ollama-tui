@@ -1,11 +1,5 @@
 export type Message = { role: "user" | "assistant"; content: string };
 
-export type DisplayMessage = {
-  role: "user" | "assistant" | "system";
-  content: string;
-  thinking?: string;
-};
-
 export type Stats = {
   status: "idle" | "thinking" | "generating" | "done";
   realtimeTps: number;

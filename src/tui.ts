@@ -1,5 +1,6 @@
 import * as readline from "readline";
-import { ollama, MODEL, COMMANDS } from "./config.ts";
+import { ollama, COMMANDS, selectModel } from "./config.ts";
+import { MODEL } from "./config.ts";
 import { defaultStats } from "./types.ts";
 import type { Message, Stats } from "./types.ts";
 
@@ -85,6 +86,8 @@ function printWelcome() {
 }
 
 async function main() {
+  await selectModel();
+
   const messages: Message[] = [];
   let stats: Stats = { ...defaultStats };
 
@@ -93,15 +96,51 @@ async function main() {
   setScrollRegion();
   printWelcome();
 
+  let isPrompting = false;
+
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
     terminal: true,
+    completer: (line: string): [string[], string] => {
+      if (line.startsWith("/")) {
+        const cmds = Object.keys(COMMANDS);
+        const hits = cmds.filter((c) => c.startsWith(line));
+        return [hits.length ? hits : cmds, line];
+      }
+      return [[], line];
+    },
+  });
+
+  process.stdin.on("keypress", () => {
+    if (!isPrompting) return;
+    setImmediate(() => {
+      const line = (rl as any).line ?? "";
+      // Clear previous suggestion line
+      process.stdout.write(`${CSI}s\n${CLEAR_LINE}${CSI}u`);
+
+      if (line.startsWith("/")) {
+        const hits = Object.keys(COMMANDS).filter(
+          (c) => c.startsWith(line) && c !== line,
+        );
+        if (hits.length > 0) {
+          const hint = hits
+            .map((c) => `${YELLOW}${c}${RESET} ${DIM}${COMMANDS[c]}${RESET}`)
+            .join("   ");
+          process.stdout.write(`${CSI}s\n${CLEAR_LINE}  ${hint}${CSI}u`);
+        }
+      }
+    });
   });
 
   const prompt = (): Promise<string> =>
     new Promise((resolve) => {
-      rl.question(`${BLUE}${BOLD}? ${RESET}`, resolve);
+      isPrompting = true;
+      rl.question(`${BLUE}${BOLD}? ${RESET}`, (answer) => {
+        isPrompting = false;
+        process.stdout.write(`\r${CLEAR_LINE}`);
+        resolve(answer);
+      });
     });
 
   rl.on("close", () => {
