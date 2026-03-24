@@ -1,43 +1,10 @@
 import React from "react";
 import { render, Box, Text } from "ink";
-import { Ollama } from "ollama";
 import * as readline from "readline";
 import { PassThrough } from "stream";
-
-const ollama = new Ollama({ host: "http://localhost:11434" });
-const MODEL = "qwen3.5:9b";
-
-// ── Types ──
-type Message = { role: "user" | "assistant"; content: string };
-type DisplayMsg = {
-  role: "user" | "assistant" | "system";
-  content: string;
-  thinking?: string;
-};
-
-type Stats = {
-  status: "idle" | "thinking" | "generating" | "done";
-  realtimeTps: number;
-  totalTokens: number;
-  ttft: number | null;
-  avgTps: number | null;
-  thinkingTokens: number;
-};
-
-const defaultStats: Stats = {
-  status: "idle",
-  realtimeTps: 0,
-  totalTokens: 0,
-  ttft: null,
-  avgTps: null,
-  thinkingTokens: 0,
-};
-
-const COMMANDS: Record<string, string> = {
-  "/help": "사용 가능한 명령어 목록을 표시합니다",
-  "/clear": "대화 컨텍스트를 초기화합니다",
-  "/quit": "앱을 종료합니다",
-};
+import { ollama, MODEL, COMMANDS } from "./config.ts";
+import { defaultStats } from "./types.ts";
+import type { Message, DisplayMessage, Stats } from "./types.ts";
 
 // ── Components ──
 function StatusBar({ stats }: { stats: Stats }) {
@@ -73,11 +40,10 @@ function StatusBar({ stats }: { stats: Stats }) {
   );
 }
 
-function ChatArea({ messages, height }: { messages: DisplayMsg[]; height: number }) {
+function ChatArea({ messages, height }: { messages: DisplayMessage[]; height: number }) {
   const lines: { role: string; text: string; isThinking?: boolean }[] = [];
 
   for (const msg of messages) {
-    // Thinking block
     if (msg.thinking) {
       const thinkLines = msg.thinking.split("\n");
       for (let i = 0; i < thinkLines.length; i++) {
@@ -88,7 +54,6 @@ function ChatArea({ messages, height }: { messages: DisplayMsg[]; height: number
         });
       }
     }
-    // Content
     const contentLines = msg.content.split("\n");
     for (let i = 0; i < contentLines.length; i++) {
       lines.push({
@@ -130,7 +95,7 @@ function Display({
   hint,
   termHeight,
 }: {
-  messages: DisplayMsg[];
+  messages: DisplayMessage[];
   stats: Stats;
   hint: string;
   termHeight: number;
@@ -151,8 +116,8 @@ function Display({
 
 // ── Main ──
 async function main() {
-  const messages: Message[] = []; // Sent to ollama
-  const displayMsgs: DisplayMsg[] = []; // Displayed in UI
+  const messages: Message[] = [];
+  const displayMsgs: DisplayMessage[] = [];
   let stats: Stats = { ...defaultStats };
 
   const fakeStdin = new PassThrough();
@@ -180,30 +145,25 @@ async function main() {
   };
 
   const fullClear = () => {
-    process.stdout.write("\x1b[2J\x1b[H"); // Clear screen, cursor to 1,1
+    process.stdout.write("\x1b[2J\x1b[H");
     app.clear();
   };
 
-  // Ctrl+C
   process.on("SIGINT", () => {
     app.unmount();
-    process.stdout.write("\x1b[?25h"); // Show cursor
+    process.stdout.write("\x1b[?25h");
     process.exit(0);
   });
 
-  // Resize
   process.stdout.on("resize", () => update());
 
-  // Welcome
   displayMsgs.push({
     role: "system",
     content: `Ollama TUI Chat — ${MODEL}  |  /help 로 명령어 확인`,
   });
   update();
 
-  // ── Main loop ──
   while (true) {
-    // ── Input phase: readline with Korean IME support ──
     const input = await new Promise<string>((resolve) => {
       const rl = readline.createInterface({
         input: process.stdin,
@@ -216,7 +176,6 @@ async function main() {
       });
     });
 
-    // Clear screen and re-render (clean slate after readline)
     fullClear();
 
     if (!input) {
@@ -224,7 +183,6 @@ async function main() {
       continue;
     }
 
-    // ── Commands ──
     if (input === "/help") {
       const helpLines = Object.entries(COMMANDS)
         .map(([cmd, desc]) => `${cmd} : ${desc}`)
@@ -258,12 +216,10 @@ async function main() {
       continue;
     }
 
-    // ── User message ──
     messages.push({ role: "user", content: input });
     displayMsgs.push({ role: "user", content: input });
     update("생성 중...");
 
-    // ── Generation phase ──
     const tokenTimestamps: number[] = [];
     let thinkingContent = "";
     let responseContent = "";
@@ -275,7 +231,6 @@ async function main() {
     let firstResponseTokenTime: number | null = null;
     let aborted = false;
 
-    // Enable raw mode for Esc detection
     if (process.stdin.isTTY) process.stdin.setRawMode(true);
     process.stdin.resume();
 
@@ -291,7 +246,6 @@ async function main() {
 
     stats = { ...defaultStats, status: "thinking" };
 
-    // Add assistant message placeholder
     const assistantIdx = displayMsgs.length;
     displayMsgs.push({ role: "assistant", content: "", thinking: "" });
     update("생성 중... (Esc로 중단)");
@@ -316,7 +270,6 @@ async function main() {
         const thinkText: string = (chunk as any).message?.thinking ?? "";
         const respText: string = chunk.message?.content ?? "";
 
-        // ── Thinking phase ──
         if (thinkText) {
           if (firstTokenTime === null) firstTokenTime = now;
           thinkingContent += thinkText;
@@ -334,12 +287,10 @@ async function main() {
           continue;
         }
 
-        // ── Transition ──
         if (isInThinking && respText) {
           isInThinking = false;
         }
 
-        // ── Response phase ──
         if (respText) {
           if (firstResponseTokenTime === null) {
             firstResponseTokenTime = now;
@@ -350,7 +301,6 @@ async function main() {
           tokenCount++;
           tokenTimestamps.push(now);
 
-          // Sliding window TPS
           const oneSecAgo = now - 1000;
           const recentCount = tokenTimestamps.filter((t) => t > oneSecAgo).length;
           const genTime = (now - firstResponseTokenTime) / 1000;
@@ -379,7 +329,6 @@ async function main() {
       }
     }
 
-    // ── Cleanup ──
     process.stdin.off("data", escHandler);
     if (process.stdin.isTTY) process.stdin.setRawMode(false);
 

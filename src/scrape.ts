@@ -19,16 +19,13 @@ async function scrape(url: string) {
   const html = await res.text();
   console.log(`Fetched ${html.length} chars of HTML`);
 
-  // <title> 추출
   const title = html.match(/<title[^>]*>(.*?)<\/title>/i)?.[1] ?? "Untitled";
   console.log(`Page title: ${title}`);
 
-  // <main> 영역 추출 (없으면 <body>)
   const mainMatch = html.match(/<main[^>]*>([\s\S]*?)<\/main>/i);
   const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
   let content = mainMatch?.[1] ?? bodyMatch?.[1] ?? html;
 
-  // 노이즈 태그 제거
   content = content
     .replace(/<script[\s\S]*?<\/script>/gi, "")
     .replace(/<style[\s\S]*?<\/style>/gi, "")
@@ -38,14 +35,12 @@ async function scrape(url: string) {
     .replace(/<iframe[\s\S]*?<\/iframe>/gi, "")
     .replace(/<noscript[\s\S]*?<\/noscript>/gi, "");
 
-  // HTML -> Markdown 변환
   const turndown = new TurndownService({
     headingStyle: "atx",
     codeBlockStyle: "fenced",
     bulletListMarker: "-",
   });
 
-  // 코드 블록 처리 개선
   turndown.addRule("codeBlock", {
     filter: (node) =>
       node.nodeName === "PRE" && !!node.querySelector("code"),

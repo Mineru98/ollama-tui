@@ -1,8 +1,5 @@
-import { Ollama } from "ollama";
+import { ollama, MODEL } from "./config.ts";
 
-const ollama = new Ollama({ host: "http://localhost:11434" });
-
-const MODEL = "qwen3.5:9b";
 const PROMPT = "TypeScript의 장점을 5가지 알려줘.";
 
 async function generate() {
@@ -43,7 +40,6 @@ async function generate() {
       console.log(`Tokens/sec: ${(tokenCount / (generationTime / 1000)).toFixed(2)}`);
       console.log(`TTFT (Time to First Token): ${(firstTokenTime! - startTime).toFixed(0)}ms`);
 
-      // Ollama 내부 메트릭 (eval_count/eval_duration)
       if (chunk.eval_count && chunk.eval_duration) {
         const ollamaTps = chunk.eval_count / (chunk.eval_duration / 1e9);
         console.log(`\n--- Ollama Internal Stats ---`);

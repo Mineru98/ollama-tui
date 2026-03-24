@@ -1,8 +1,14 @@
 {
-  "name": "ollama-test",
-  "module": "index.ts",
+  "name": "ollama-tui",
+  "module": "src/generate.ts",
   "type": "module",
   "private": true,
+  "scripts": {
+    "generate": "bun run src/generate.ts",
+    "tui": "bun run src/tui.ts",
+    "tui:ink": "bun run src/tui.tsx",
+    "scrape": "bun run src/scrape.ts"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },

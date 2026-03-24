@@ -1,8 +1,7 @@
-import { Ollama } from "ollama";
 import * as readline from "readline";
-
-const ollama = new Ollama({ host: "http://localhost:11434" });
-const MODEL = "qwen3.5:9b";
+import { ollama, MODEL, COMMANDS } from "./config.ts";
+import { defaultStats } from "./types.ts";
+import type { Message, Stats } from "./types.ts";
 
 // ── ANSI escape helpers ──
 const CSI = "\x1b[";
@@ -20,23 +19,6 @@ const GRAY = `${CSI}90m`;
 const CLEAR_LINE = `${CSI}2K`;
 const HIDE_CURSOR = `${CSI}?25l`;
 const SHOW_CURSOR = `${CSI}?25h`;
-
-type Message = { role: "user" | "assistant"; content: string };
-
-type Stats = {
-  status: "idle" | "thinking" | "generating" | "done";
-  realtimeTps: number;
-  totalTokens: number;
-  ttft: number | null;
-  avgTps: number | null;
-  thinkingTokens: number;
-};
-
-const COMMANDS: Record<string, string> = {
-  "/help": "사용 가능한 명령어 목록을 표시합니다",
-  "/clear": "대화 컨텍스트를 초기화합니다",
-  "/quit": "앱을 종료합니다",
-};
 
 const cols = () => process.stdout.columns || 80;
 
@@ -72,7 +54,6 @@ function drawStatusBar(stats: Stats) {
   const w = cols();
   const border = "─".repeat(Math.max(w - 2, 0));
 
-  // Save cursor, move to row 1, draw bar, restore cursor
   process.stdout.write(
     `${CSI}s${CSI}1;1H${CLEAR_LINE}┌${border}┐\n${CLEAR_LINE}│ ${line}${CSI}${w}G│\n${CLEAR_LINE}└${border}┘${CSI}u`,
   );
@@ -105,16 +86,8 @@ function printWelcome() {
 
 async function main() {
   const messages: Message[] = [];
-  let stats: Stats = {
-    status: "idle",
-    realtimeTps: 0,
-    totalTokens: 0,
-    ttft: null,
-    avgTps: null,
-    thinkingTokens: 0,
-  };
+  let stats: Stats = { ...defaultStats };
 
-  // Clear screen & draw initial UI
   process.stdout.write(`${CSI}2J${CSI}1;1H`);
   drawStatusBar(stats);
   setScrollRegion();
@@ -137,7 +110,6 @@ async function main() {
     process.exit(0);
   });
 
-  // Handle terminal resize
   process.stdout.on("resize", () => {
     drawStatusBar(stats);
     setScrollRegion();
@@ -148,21 +120,13 @@ async function main() {
     const trimmed = input.trim();
     if (!trimmed) continue;
 
-    // ── Handle commands ──
     if (trimmed === "/help") {
       printHelp();
       continue;
     }
     if (trimmed === "/clear") {
       messages.length = 0;
-      stats = {
-        status: "idle",
-        realtimeTps: 0,
-        totalTokens: 0,
-        ttft: null,
-        avgTps: null,
-        thinkingTokens: 0,
-      };
+      stats = { ...defaultStats };
       process.stdout.write(`${CSI}2J${CSI}1;1H`);
       drawStatusBar(stats);
       setScrollRegion();
@@ -180,11 +144,9 @@ async function main() {
       continue;
     }
 
-    // ── User message ──
     messages.push({ role: "user", content: trimmed });
     console.log(`\n${BLUE}${BOLD}You:${RESET} ${trimmed}\n`);
 
-    // ── Stream response ──
     const tokenTimestamps: number[] = [];
     let thinkingContent = "";
     let responseContent = "";
@@ -195,17 +157,9 @@ async function main() {
     let firstTokenTime: number | null = null;
     let firstResponseTokenTime: number | null = null;
 
-    stats = {
-      status: "thinking",
-      realtimeTps: 0,
-      totalTokens: 0,
-      ttft: null,
-      avgTps: null,
-      thinkingTokens: 0,
-    };
+    stats = { ...defaultStats, status: "thinking" };
     drawStatusBar(stats);
 
-    // Print thinking header
     process.stdout.write(`${GRAY}${ITALIC}💭 Thinking...${RESET}\n`);
 
     try {
@@ -227,7 +181,6 @@ async function main() {
         const thinkText = hasThinking ? (chunk as any).message.thinking : "";
         const respText = chunk.message?.content ?? "";
 
-        // ── Thinking phase ──
         if (thinkText) {
           if (firstTokenTime === null) firstTokenTime = now;
 
@@ -244,14 +197,11 @@ async function main() {
           continue;
         }
 
-        // ── Transition from thinking to generating ──
         if (isInThinking && respText) {
           isInThinking = false;
-          // End thinking block, start response
           process.stdout.write(`${RESET}\n\n${GREEN}${BOLD}AI:${RESET}  `);
         }
 
-        // ── Response phase ──
         if (respText) {
           if (firstResponseTokenTime === null) {
             firstResponseTokenTime = now;
@@ -263,7 +213,6 @@ async function main() {
           tokenTimestamps.push(now);
           process.stdout.write(respText);
 
-          // Sliding window TPS (last 1 second)
           const oneSecAgo = now - 1000;
           const recentCount = tokenTimestamps.filter((t) => t > oneSecAgo).length;
 
@@ -289,7 +238,6 @@ async function main() {
       console.log(`\n${CSI}31m[Error: ${err.message}]${RESET}`);
     }
 
-    // ── Final stats ──
     const endTime = performance.now();
     const totalGenTime = firstResponseTokenTime
       ? (endTime - firstResponseTokenTime) / 1000
@@ -307,14 +255,11 @@ async function main() {
     };
     drawStatusBar(stats);
 
-    // If we never left thinking mode (no response content)
     if (isInThinking) {
       process.stdout.write(`${RESET}\n`);
     }
 
     messages.push({ role: "assistant", content: responseContent });
-
-    // Clean up old timestamps to prevent memory leak
     tokenTimestamps.length = 0;
 
     console.log("\n");
