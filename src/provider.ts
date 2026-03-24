@@ -153,6 +153,7 @@ export class VLLMProvider implements Provider {
       messages: messages.map((m) => ({ role: m.role, content: m.content })),
       stream: true,
       ...(options?.max_tokens ? { max_tokens: options.max_tokens } : {}),
+      chat_template_kwargs: { enable_thinking: options?.think ?? false },
     };
 
     const res = await fetch(`${this.baseUrl}/v1/chat/completions`, {
@@ -227,9 +228,10 @@ export class VLLMProvider implements Provider {
             yield { content: delta.content, done: false };
           }
 
-          // vLLM reasoning_content 지원 (GLM-4 등)
-          if (delta?.reasoning_content) {
-            yield { thinking: delta.reasoning_content, done: false };
+          // vLLM reasoning 지원 (GLM-4 등)
+          const reasoning = delta?.reasoning_content ?? delta?.reasoning;
+          if (reasoning) {
+            yield { thinking: reasoning, done: false };
           }
 
           if (finishReason) {
