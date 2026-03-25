@@ -1,0 +1,36 @@
+services:
+  vllm:
+    build: .
+    container_name: vllm-glm4-flash
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ~/.cache/huggingface:/root/.cache/huggingface
+      - ~/.cache/vllm:/root/.cache/vllm
+    environment:
+      - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN:-}
+      - HF_TOKEN=${HF_TOKEN:-}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    ipc: host
+    command: >
+      --model QuantTrio/GLM-4.7-Flash-AWQ
+      --quantization awq_marlin
+      --dtype half
+      --max-model-len 4096
+      --gpu-memory-utilization 0.95
+      --max-num-seqs 64
+      --max-num-batched-tokens 8192
+      --enable-prefix-caching
+      --trust-remote-code
+      --tool-call-parser glm45
+      --reasoning-parser glm45
+      --enable-auto-tool-choice
+      --host 0.0.0.0
+      --port 8000
